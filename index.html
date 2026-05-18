@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Excel预约表转彩色月历</title>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    :root {
+      --bg: #f6f7fb;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --line: #e5e7eb;
+      --busy: #d1d5db;
+      --short-free: #bfdbfe;
+      --free-2h: #bbf7d0;
+      --free-3h: #fde68a;
+      --danger: #fecaca;
+      --accent: #4f46e5;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    header {
+      padding: 28px 24px 16px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 28px;
+      line-height: 1.25;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    main {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px 40px;
+    }
+
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+      padding: 20px;
+      margin-bottom: 18px;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(140px, 1fr));
+      gap: 14px;
+      align-items: end;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    input, select, button {
+      width: 100%;
+      height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 0 10px;
+      font-size: 14px;
+      background: #fff;
+    }
+
+    button {
+      background: var(--accent);
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    button:disabled {
+      opacity: .45;
+      cursor: not-allowed;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .dot {
+      width: 18px;
+      height: 12px;
+      border-radius: 4px;
+      display: inline-block;
+      border: 1px solid rgba(0,0,0,0.08);
+    }
+
+    .calendar-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .calendar-title {
+      font-size: 22px;
+      font-weight: 700;
+    }
+
+    .weekdays, .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 8px;
+    }
+
+    .weekday {
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+      padding: 8px 0;
+    }
+
+    .day-card {
+      min-height: 146px;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 10px;
+      overflow: hidden;
+    }
+
+    .day-card.empty {
+      background: transparent;
+      border: none;
+      box-shadow: none;
+    }
+
+    .day-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .date-num {
+      font-weight: 700;
+      font-size: 15px;
+    }
+
+    .status {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .slots {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .slot {
+      height: 22px;
+      border-radius: 7px;
+      padding: 3px 6px;
+      font-size: 11px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      border: 1px solid rgba(0,0,0,0.06);
+    }
+
+    .busy { background: var(--busy); color: #374151; }
+    .free-short { background: var(--short-free); color: #1e3a8a; }
+    .free-2h { background: var(--free-2h); color: #14532d; }
+    .free-3h { background: var(--free-3h); color: #713f12; font-weight: 650; }
+    .none { background: var(--danger); color: #7f1d1d; }
+
+    .message {
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    .table-preview {
+      max-height: 260px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      margin-top: 14px;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      font-size: 12px;
+    }
+
+    th, td {
+      border: 1px solid var(--line);
+      padding: 6px 8px;
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    th { background: #f9fafb; position: sticky; top: 0; }
+
+    @media (max-width: 900px) {
+      .controls { grid-template-columns: repeat(2, 1fr); }
+      .weekdays, .calendar-grid { grid-template-columns: repeat(1, 1fr); }
+      .weekday { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Excel预约表 → 彩色月历空档图</h1>
+    <div class="subtitle">上传从腾讯文档导出的 Excel。适配结构：上方有标题行，某一行是时间段，例如 8:00-9:00；左侧第一列是日期；格子里有内容表示该时间段已占用。</div>
+  </header>
+
+  <main>
+    <section class="panel">
+      <div class="controls">
+        <div>
+          <label for="fileInput">上传 Excel / CSV</label>
+          <input id="fileInput" type="file" accept=".xlsx,.xls,.csv" />
+        </div>
+        <div>
+          <label for="sheetSelect">选择工作表</label>
+          <select id="sheetSelect" disabled></select>
+        </div>
+        <div>
+          <label for="monthInput">显示月份</label>
+          <input id="monthInput" type="month" />
+        </div>
+        <div>
+          <label for="minDuration">最低可约时长</label>
+          <select id="minDuration">
+            <option value="2">2小时</option>
+            <option value="3">3小时</option>
+          </select>
+        </div>
+        <div>
+          <label>&nbsp;</label>
+          <button id="generateBtn" disabled>生成月历</button>
+        </div>
+      </div>
+
+      <div class="legend">
+        <span><i class="dot" style="background: var(--free-3h)"></i>连续空闲 ≥ 3小时，最推荐</span>
+        <span><i class="dot" style="background: var(--free-2h)"></i>连续空闲 ≥ 2小时，可约</span>
+        <span><i class="dot" style="background: var(--short-free)"></i>空闲但不足2小时</span>
+        <span><i class="dot" style="background: var(--busy)"></i>已占用</span>
+        <span><i class="dot" style="background: var(--danger)"></i>当天无可约空档</span>
+      </div>
+    </section>
+
+    <section class="panel" id="calendarPanel">
+      <div class="message">请先上传 Excel 文件，然后选择工作表并生成月历。</div>
+    </section>
+
+    <section class="panel" id="previewPanel" style="display:none;">
+      <strong>读取预览</strong>
+      <div class="message">如果月历不对，通常是因为日期列/时间行结构和默认解析规则不同。</div>
+      <div class="table-preview" id="tablePreview"></div>
+    </section>
+  </main>
+
+  <script>
+    let workbook = null;
+    let currentRows = [];
+
+    const fileInput = document.getElementById('fileInput');
+    const sheetSelect = document.getElementById('sheetSelect');
+    const monthInput = document.getElementById('monthInput');
+    const generateBtn = document.getElementById('generateBtn');
+    const calendarPanel = document.getElementById('calendarPanel');
+    const previewPanel = document.getElementById('previewPanel');
+    const tablePreview = document.getElementById('tablePreview');
+
+    const now = new Date();
+    monthInput.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    fileInput.addEventListener('change', async (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const data = await file.arrayBuffer();
+      workbook = XLSX.read(data, { type: 'array', cellDates: true });
+
+      sheetSelect.innerHTML = '';
+      workbook.SheetNames.forEach(name => {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        sheetSelect.appendChild(option);
+      });
+
+      sheetSelect.disabled = false;
+      generateBtn.disabled = false;
+      loadSelectedSheet();
+    });
+
+    sheetSelect.addEventListener('change', loadSelectedSheet);
+    generateBtn.addEventListener('click', renderCalendar);
+
+    function loadSelectedSheet() {
+      if (!workbook) return;
+      const sheetName = sheetSelect.value;
+      const sheet = workbook.Sheets[sheetName];
+      currentRows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+      renderPreview(currentRows.slice(0, 12));
+      previewPanel.style.display = 'block';
+    }
+
+    function renderPreview(rows) {
+      if (!rows.length) return;
+      let html = '<table><tbody>';
+      rows.forEach((row, idx) => {
+        html += '<tr>';
+        row.forEach(cell => {
+          html += idx === 0 ? `<th>${escapeHtml(cell)}</th>` : `<td>${escapeHtml(cell)}</td>`;
+        });
+        html += '</tr>';
+      });
+      html += '</tbody></table>';
+      tablePreview.innerHTML = html;
+    }
+
+    function renderCalendar() {
+      const [year, month] = monthInput.value.split('-').map(Number);
+      const minDuration = Number(document.getElementById('minDuration').value);
+      const availability = parseAvailability(currentRows);
+      drawMonth(year, month, availability, minDuration);
+    }
+
+    function parseAvailability(rows) {
+      // 自动解析：寻找包含最多“8:00-9:00”这类时间段的行作为时间表头。
+      // 第一列是日期；格子为空 = 空闲；格子非空 = 占用。
+      const result = new Map();
+      if (!rows || rows.length < 2) return result;
+
+      const headerRowIndex = findTimeHeaderRow(rows);
+      if (headerRowIndex === -1) {
+        alert('没有找到时间段表头。请确认表格里有类似 8:00-9:00、9:00-10:00 的单元格。');
+        return result;
+      }
+
+      const header = rows[headerRowIndex];
+      const timeColumns = [];
+
+      for (let c = 1; c < header.length; c++) {
+        const range = parseTimeRange(header[c]);
+        if (range) timeColumns.push({ col: c, start: range.start, end: range.end, raw: header[c] });
+      }
+
+      for (let r = headerRowIndex + 1; r < rows.length; r++) {
+        const row = rows[r];
+        const date = parseDate(row[0]);
+        if (!date) continue;
+
+        const key = toDateKey(date);
+        if (!result.has(key)) result.set(key, []);
+
+        timeColumns.forEach((tc) => {
+          const cell = String(row[tc.col] || '').trim();
+          const busy = cell.length > 0;
+
+          result.get(key).push({
+            start: tc.start,
+            end: tc.end,
+            busy,
+            label: cell
+          });
+        });
+      }
+
+      return result;
+    }
+
+    function drawMonth(year, month, availability, minDuration) {
+      const first = new Date(year, month - 1, 1);
+      const last = new Date(year, month, 0);
+      const startWeekday = (first.getDay() + 6) % 7; // Monday first
+      const daysInMonth = last.getDate();
+
+      let html = `
+        <div class="calendar-header">
+          <div class="calendar-title">${year}年${month}月 空闲月历</div>
+          <div class="message">筛选标准：连续空闲 ≥ ${minDuration}小时</div>
+        </div>
+        <div class="weekdays">
+          <div class="weekday">周一</div><div class="weekday">周二</div><div class="weekday">周三</div><div class="weekday">周四</div><div class="weekday">周五</div><div class="weekday">周六</div><div class="weekday">周日</div>
+        </div>
+        <div class="calendar-grid">
+      `;
+
+      for (let i = 0; i < startWeekday; i++) html += '<div class="day-card empty"></div>';
+
+      for (let day = 1; day <= daysInMonth; day++) {
+        const date = new Date(year, month - 1, day);
+        const key = toDateKey(date);
+        const slots = availability.get(key) || [];
+        const freeBlocks = calculateFreeBlocks(slots);
+        const meaningfulFree = freeBlocks.filter(b => durationHours(b) >= minDuration);
+        const topStatus = meaningfulFree.length ? `${meaningfulFree.length}个可约空档` : '无可约空档';
+
+        html += `<div class="day-card">
+          <div class="day-top">
+            <div class="date-num">${day}</div>
+            <div class="status">${topStatus}</div>
+          </div>
+          <div class="slots">`;
+
+        if (!slots.length) {
+          html += `<div class="slot none">未读取到数据</div>`;
+        } else if (!freeBlocks.length) {
+          html += `<div class="slot none">无空闲</div>`;
+        } else {
+          freeBlocks.forEach(block => {
+            const h = durationHours(block);
+            let cls = 'free-short';
+            let suffix = '不足2h';
+            if (h >= 3) { cls = 'free-3h'; suffix = '可约3h+'; }
+            else if (h >= 2) { cls = 'free-2h'; suffix = '可约2h'; }
+            html += `<div class="slot ${cls}">${formatTime(block.start)}–${formatTime(block.end)} ${suffix}</div>`;
+          });
+        }
+
+        html += `</div></div>`;
+      }
+
+      html += '</div>';
+      calendarPanel.innerHTML = html;
+    }
+
+    function calculateFreeBlocks(slots) {
+      if (!slots.length) return [];
+      const sorted = [...slots].sort((a, b) => a.start - b.start);
+      const blocks = [];
+      let current = null;
+
+      sorted.forEach(slot => {
+        if (!slot.busy) {
+          if (!current) current = { start: slot.start, end: slot.end };
+          else if (slot.start <= current.end) current.end = Math.max(current.end, slot.end);
+          else {
+            blocks.push(current);
+            current = { start: slot.start, end: slot.end };
+          }
+        } else if (current) {
+          blocks.push(current);
+          current = null;
+        }
+      });
+
+      if (current) blocks.push(current);
+      return blocks;
+    }
+
+    function durationHours(block) {
+      return (block.end - block.start) / 60;
+    }
+
+    function findTimeHeaderRow(rows) {
+      let bestIndex = -1;
+      let bestCount = 0;
+
+      rows.forEach((row, idx) => {
+        let count = 0;
+        row.forEach(cell => {
+          if (parseTimeRange(cell)) count++;
+        });
+        if (count > bestCount) {
+          bestCount = count;
+          bestIndex = idx;
+        }
+      });
+
+      return bestCount >= 2 ? bestIndex : -1;
+    }
+
+    function parseTimeRange(value) {
+      if (value === null || value === undefined || value === '') return null;
+      const s = String(value).trim().replace(/：/g, ':').replace(/—|–|－|~|～/g, '-');
+
+      // 支持 8:00-9:00、10:00-11: 00、11:00-12:00 等。
+      const match = s.match(/(\d{1,2})\s*:\s*(\d{1,2})\s*-\s*(\d{1,2})\s*:\s*(\d{1,2})/);
+      if (!match) return null;
+
+      const start = Number(match[1]) * 60 + Number(match[2]);
+      let end = Number(match[3]) * 60 + Number(match[4]);
+      if (end <= start) end += 24 * 60;
+      return { start, end };
+    }
+
+    function parseDate(value) {
+      if (!value) return null;
+      if (value instanceof Date && !isNaN(value)) return value;
+      const s = String(value).trim();
+      const currentYear = new Date().getFullYear();
+
+      // 2026年5月1 星期五 / 2026年5月1日 / 2026-05-22 / 2026/5/22
+      let match = s.match(/(20\d{2})\s*[年\-/.]\s*(\d{1,2})\s*[月\-/.]\s*(\d{1,2})/);
+      if (match) return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+
+      // 5月22日 / 5月22 星期五 / 5/22 / 5-22
+      match = s.match(/(\d{1,2})\s*[月\/-]\s*(\d{1,2})/);
+      if (match) return new Date(currentYear, Number(match[1]) - 1, Number(match[2]));
+
+      return null;
+    }
+
+    function toDateKey(date) {
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    }
+
+    function formatTime(minutes) {
+      const h = Math.floor(minutes / 60);
+      const m = minutes % 60;
+      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+  </script>
+</body>
+</html>
